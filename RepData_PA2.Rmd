@@ -1,0 +1,99 @@
+---
+title: "Storm Data Analysis"
+author: "Eric Shure"
+date: "August 17, 2014"
+output: html_document
+---
+## Synopsis
+This analysis is meant to explore the U.S. National Oceanic and Atmospheric Administration's (NOAA) storm database and answer the following questions:
+
+1. Across the United States, which types of events are most harmful with respect to population health?
+
+2. Across the United States, which types of events have the greatest economic consequences?  
+
+The data used for this analysis can be downloaded [here](https://d396qusza40orc.cloudfront.net/repdata%2Fdata%2FStormData.csv.bz2). Further information about the data can be found in the [National Weather Service Storm Data Documentation](https://d396qusza40orc.cloudfront.net/repdata%2Fpeer2_doc%2Fpd01016005curr.pdf) or at the [National Climatic Data Center Storm Events FAQ](https://d396qusza40orc.cloudfront.net/repdata%2Fpeer2_doc%2FNCDC%20Storm%20Events-FAQ%20Page.pdf).
+
+## Data Processing
+In this section we will go over how the data was processed in preparation for the results section, which will be presented later.   
+
+#### Loading the Data
+In this section we will show and go over the code to load the dataset into R. In this first code chunk we create a tempfile object.
+```{r}
+temp <- tempfile()
+```
+In this next code chunk we download the file to the tempfile we created.  
+```{r cache=TRUE}
+download.file('https://d396qusza40orc.cloudfront.net/repdata%2Fdata%2FStormData.csv.bz2',temp,method = 'curl')
+```
+Here we load the data, from the tempfile into an R object named "storm_data."
+```{r cache=TRUE}
+storm_data <- read.csv(temp)
+```
+In this final code chunk, to the loading of the data portion, we delete the link from "temp" to the .zip file.
+```{r}
+unlink(temp)
+```
+#### Preparing the Data
+In this section we will show and go over the code for preparing the data for the results section. Having gone over the documentation above, you will notice that there is a multiplier needed to in order to acurately answer the question regarding economic consequences. With that said, we will first need to change the identifier for the multiplier to the corresponding number and then do the actual multiplication so we have the true cost in one variable. Through this next code chunk we are able to see that the multiplier identifiers come in a few variations for property damage.
+```{r}
+levels(storm_data$PROPDMGEXP)
+```
+We are then able to glean the same information for the crop variable.
+```{r}
+levels(storm_data$CROPDMGEXP)
+```
+Now we will do the actual tranformation via a few lines of code, which will be replacig the known multipliers with the corresponding values.
+```{r}
+storm_data$PROPDMGEXP <- sub('K',1000, storm_data$PROPDMGEXP)
+storm_data$PROPDMGEXP <- sub('M',1000000, storm_data$PROPDMGEXP)
+storm_data$PROPDMGEXP <- sub('B',1000000000, storm_data$PROPDMGEXP)
+storm_data$PROPDMGEXP <- sub('m',1000000, storm_data$PROPDMGEXP)
+storm_data$CROPDMGEXP <- sub('m',1000000, storm_data$CROPDMGEXP)
+storm_data$CROPDMGEXP <- sub('B',1000000000, storm_data$CROPDMGEXP)
+storm_data$CROPDMGEXP <- sub('M',1000000, storm_data$CROPDMGEXP)
+storm_data$CROPDMGEXP <- sub('K',1000, storm_data$CROPDMGEXP)
+storm_data$CROPDMGEXP <- sub('k',1000, storm_data$CROPDMGEXP)
+```
+Now that we have replaced the multipliers with their associated value, we can complete the actual multiplication to get our true damage amounts. Right before multipication we must coerce the data to be numeric. We also have to replace any NA's created by the coercion with 1's. 
+```{r}
+storm_data$PROPDMGEXP <- as.numeric(storm_data$PROPDMGEXP)
+storm_data$CROPDMGEXP <- as.numeric(storm_data$CROPDMGEXP)
+storm_data$CROPDMGEXP[is.na(storm_data$CROPDMGEXP)] <- 1
+storm_data$PROPDMGEXP[is.na(storm_data$PROPDMGEXP)] <- 1
+storm_data$PROPDMG <- storm_data$PROPDMG * storm_data$PROPDMGEXP
+storm_dataCPROPDMG <- storm_data$CROPDMG * storm_data$CROPDMGEXP
+```
+Here we beging to tranform the data by aggregating the avgerage fatalaties and injuries by event type. We then order the object from largest to smallest.
+```{r cache=TRUE}
+sub_data1 <- aggregate(PROPDMG+CROPDMG~EVTYPE, data = storm_data,mean)
+sub_data1 <- sub_data1[order(sub_data1$'PROPDMG + CROPDMG', decreasing = T),]
+```
+We also perform the same tranformation for the other variables.
+```{r cache=TRUE}
+sub_data <- aggregate(FATALITIES+INJURIES~EVTYPE, data = storm_data,mean)
+sub_data <- sub_data[order(sub_data$'FATALITIES + INJURIES', decreasing = T),]
+
+```
+We now take only the top 10 results for both questions.
+```{r}
+sub_data1 <- head(sub_data1, 10)
+sub_data <- head(sub_data, 10)
+```
+We need to name the rows of each object now, for proper plotting. 
+```{r}
+row.names(sub_data1) <- 1:10
+row.names(sub_data) <- 1:10
+```
+
+## Results
+The answer to the question "**Across the United States, which types of events are most harmful with respect to population health?**" is answered by the following bar plot. Here you will see the top 10 events and their average affect on population health. The number underneath each bar can be mapped to the corresponding event type in the legend. 
+```{r}
+barplot(sub_data$'FATALITIES + INJURIES',names.arg = 1:10, xlab = 'Event Type', ylab='Avg Fatalities and Injuries', main='Top 10 Events by Avg Fatalities and Injuries')
+legend('topright',paste(rownames(sub_data), toupper(sub_data$EVTYPE), sep = " "), cex=.8)
+```   
+
+The answer to the question "**Across the United States, which types of events have the greatest economic consequences?**" is anwered by the following bar plot. Here you will see the top 10 events and their average economic affect.The number underneath each bar can be mapped to the corresponding event type in the legend. 
+```{r}
+barplot(sub_data1$'PROPDMG + CROPDMG',names.arg = 1:10, xlab = 'Event Type', ylab='Avg Property and Crop Damage($)', main='Top 10 Events by Avg Property and Crop Damage')
+legend('topright',paste(rownames(sub_data1), toupper(sub_data1$EVTYPE), sep = " "), cex=.8)
+```
